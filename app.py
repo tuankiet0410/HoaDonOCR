@@ -26,13 +26,10 @@ except Exception as e:
 
 # ================= API Keys (Sử dụng Streamlit Secrets) =================
 try:
-    # Tải API key từ file .streamlit/secrets.toml
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY") # .get() an toàn hơn
+    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY")
 
 except KeyError as e:
-    # --- ĐÃ SỬA LỖI ---
-    # Cách đúng để lấy tên key bị thiếu là dùng e.args[0]
     missing_key = e.args[0]
     st.error(f"Lỗi: Không tìm thấy secret '{missing_key}'.")
     st.info(f"Vui lòng vào 'Manage app' -> 'Settings' -> 'Secrets' và thêm '{missing_key}' vào.")
@@ -186,11 +183,14 @@ def extract_invoice_json(text_or_image_data):
         print(f"[ERROR] Lỗi gọi Gemini API: {e}")
         return "{}"
 
-# --- BỔ SUNG: CÁC HÀM TIỀN XỬ LÝ ẢNH ---
+# --- THAY ĐỔI: HÀM TIỀN XỬ LÝ ẢNH ĐƯỢC TỐI ƯU HÓA ---
 # ================= Image Pre-processing Helpers =================
 @st.cache_data(show_spinner=False)
 def correct_skew(image_array_rgb):
-    """Xoay ảnh RGB (np.array) bị nghiêng."""
+    """
+    Xoay ảnh RGB (np.array) bị nghiêng.
+    Phiên bản này được tối ưu hóa, dùng contours thay vì np.where, tốc độ nhanh hơn.
+    """
     try:
         # Chuyển sang ảnh xám
         image_gray = cv2.cvtColor(image_array_rgb, cv2.COLOR_RGB2GRAY)
@@ -198,11 +198,21 @@ def correct_skew(image_array_rgb):
         # Nhị phân hóa ảnh và đảo ngược (chữ trắng, nền đen)
         _, thresh = cv2.threshold(image_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         
-        # Tìm tọa độ các điểm text
-        coords = np.column_stack(np.where(thresh > 0))
+        # --- TỐI ƯU HÓA: Dùng findContours ---
+        # Tìm tất cả các đường viền (contours)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Tìm góc nghiêng
-        rect = cv2.minAreaRect(coords)
+        # Nối tất cả các điểm từ các contours lại thành một mảng
+        if not contours:
+            print("[INFO] Không tìm thấy contours, bỏ qua xoay.")
+            return image_array_rgb
+            
+        all_points = np.concatenate([cnt for cnt in contours])
+        
+        # Tìm hình chữ nhật nhỏ nhất bao quanh TẤT CẢ các điểm
+        rect = cv2.minAreaRect(all_points)
+        # --- KẾT THÚC TỐI ƯU HÓA ---
+        
         angle = rect[-1]
         
         # Chuẩn hóa góc:
@@ -231,30 +241,7 @@ def correct_skew(image_array_rgb):
         print(f"[ERROR] Lỗi khi xoay ảnh: {e}")
         return image_array_rgb # Trả về ảnh gốc nếu lỗi
 
-@st.cache_data(show_spinner=False)
-def improve_contrast(image_array_rgb):
-    """Tăng độ tương phản của ảnh RGB (np.array) dùng CLAHE."""
-    try:
-        # Chuyển sang LAB color space
-        lab = cv2.cvtColor(image_array_rgb, cv2.COLOR_RGB2LAB)
-        
-        # Tách các kênh
-        l, a, b = cv2.split(lab)
-        
-        # Áp dụng CLAHE cho kênh L (Lightness)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-        
-        # Ghép kênh lại
-        limg = cv2.merge((cl, a, b))
-        
-        # Chuyển về RGB
-        final_image = cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
-        print("[INFO] Đã tăng độ tương phản ảnh.")
-        return final_image
-    except Exception as e:
-        print(f"[ERROR] Lỗi khi tăng tương phản: {e}")
-        return image_array_rgb # Trả về ảnh gốc nếu lỗi
+# --- HÀM improve_contrast ĐÃ BỊ XÓA ---
 
 # ================= Streamlit UI =================
 st.set_page_config(page_title="Trích xuất Hóa đơn", layout="wide")
@@ -266,13 +253,7 @@ col1, col2 = st.columns([2, 3])
 OCR_METHODS = ["Vision", "Google Vision", "PaddleOCR"] 
 selected_ocr = st.sidebar.selectbox("Chọn phương thức OCR/Vision", OCR_METHODS)
 
-# --- BỔ SUNG: TÙY CHỌN TIỀN XỬ LÝ TRONG SIDEBAR ---
-st.sidebar.divider()
-st.sidebar.subheader("Tùy chọn Tiền xử lý")
-# Dùng session_state để lưu lựa chọn
-st.session_state.do_deskew = st.sidebar.checkbox("Tự động xoay ảnh nghiêng", value=True)
-st.session_state.do_contrast = st.sidebar.checkbox("Tăng độ tương phản (ảnh mờ)", value=False)
-# --- HẾT BỔ SUNG ---
+# --- ĐÃ XÓA: CÁC TÙY CHỌN TIỀN XỬ LÝ TRONG SIDEBAR ---
 
 
 with col1:
@@ -313,20 +294,18 @@ with col1:
                 st.info(f"Đang xử lý Hóa đơn số {i+1} ({uploaded_file.name})...")
                 
                 try:
-                    # --- THAY ĐỔI: LUỒNG XỬ LÝ ẢNH ---
+                    # --- THAY ĐỔI: LUỒNG XỬ LÝ ẢNH TỰ ĐỘNG ---
                     image_pil = Image.open(uploaded_file)
                     
                     # Chuyển sang np.array (RGB) để xử lý OpenCV
                     img_np_rgb = np.array(image_pil.convert("RGB"))
 
-                    # BƯỚC 1: TIỀN XỬ LÝ (NẾU ĐƯỢC CHỌN)
-                    if st.session_state.get('do_deskew', True): # Dùng .get để an toàn
-                        with st.spinner(f"File {uploaded_file.name}: Đang tự động xoay..."):
-                            img_np_rgb = correct_skew(img_np_rgb)
+                    # BƯỚC 1: TIỀN XỬ LÝ (TỰ ĐỘNG VÀ NHANH)
+                    # Chỉ tự động xoay ảnh, vì hàm này đã được tối ưu hóa
+                    with st.spinner(f"File {uploaded_file.name}: Đang tự động làm thẳng ảnh..."):
+                        img_np_rgb = correct_skew(img_np_rgb)
                     
-                    if st.session_state.get('do_contrast', False):
-                         with st.spinner(f"File {uploaded_file.name}: Đang tăng tương phản..."):
-                            img_np_rgb = improve_contrast(img_np_rgb)
+                    # (Đã xóa bước tăng tương phản)
                     
                     # BƯỚC 2: CHUẨN BỊ DỮ LIỆU SAU KHI TIỀN XỬ LÝ
                     
@@ -355,7 +334,7 @@ with col1:
                             # Gửi ảnh đã xử lý
                             ocr_text = ocr_google_vision_api_key(image_bytes_for_ocr)
                         elif selected_ocr == "PaddleOCR":
-                            # --- THAY ĐỔI: Gửi ảnh BGR đã xử lý cho Paddle ---
+                            # Gửi ảnh BGR đã xử lý cho Paddle
                             ocr_text = ocr_paddle(img_np_bgr_for_paddle)
                         
                         if not ocr_text:
@@ -538,5 +517,4 @@ with col2:
                 # Hiển thị JSON response
                 st.text("Kết quả JSON (Gemini trả về):")
                 st.json(raw_data['response'])
-
                 st.divider()
