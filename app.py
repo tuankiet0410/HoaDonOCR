@@ -29,11 +29,15 @@ try:
     # Tải API key từ file .streamlit/secrets.toml
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY") # .get() an toàn hơn
+
 except KeyError as e:
-    st.error(f"Lỗi: Không tìm thấy '{e.key}' trong Streamlit Secrets.")
-    st.info("Vui lòng tạo file .streamlit/secrets.toml và thêm API keys vào đó.")
+    # --- ĐÃ SỬA LỖI ---
+    # Cách đúng để lấy tên key bị thiếu là dùng e.args[0]
+    missing_key = e.args[0]
+    st.error(f"Lỗi: Không tìm thấy secret '{missing_key}'.")
+    st.info(f"Vui lòng vào 'Manage app' -> 'Settings' -> 'Secrets' và thêm '{missing_key}' vào.")
     st.stop()
-except FileNotFoundError:
+except FileNotFoundError: # Lỗi này thường không xảy ra trên Cloud
     st.error("Lỗi: Không tìm thấy file .streamlit/secrets.toml.")
     st.info("Vui lòng tạo file .streamlit/secrets.toml và thêm API keys vào đó.")
     st.stop()
@@ -534,4 +538,5 @@ with col2:
                 # Hiển thị JSON response
                 st.text("Kết quả JSON (Gemini trả về):")
                 st.json(raw_data['response'])
+
                 st.divider()
