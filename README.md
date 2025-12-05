@@ -15,15 +15,6 @@
     pip install -r requirements.txt
     ```
 
-3.  **Cấu hình API Keys:**
-    * Tạo một thư mục `.streamlit` ở thư mục gốc.
-    * Tạo file `.streamlit/secrets.toml`.
-    * Thêm API keys của bạn vào file:
-        ```toml
-        GEMINI_API_KEY = "YOUR_GEMINI_KEY_HERE"
-        GOOGLE_API_KEY = "YOUR_GOOGLE_VISION_KEY_HERE"
-        ```
-
 ## Chạy ứng dụng
 
 Chạy lệnh sau trong terminal:
