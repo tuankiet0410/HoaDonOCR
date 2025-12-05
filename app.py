@@ -169,8 +169,8 @@ def postprocess_invoice_items_vi(items: list) -> list:
     return fixed
 
 # ================= API Keys =================
-GEMINI_API_KEY = "API HERE" #get trong secrets.toml
-GOOGLE_VISION_API_KEY = "API HERE"  #get trong secrets.toml
+GEMINI_API_KEY = "API HERE" 
+GOOGLE_VISION_API_KEY = "API HERE" 
 
 # ================= Initialize Gemini =================
 if 'gemini_configured' not in st.session_state:
@@ -317,7 +317,7 @@ def ocr_google_vision_api_key(image_bytes):
         return ""
 
 # ================= MongoDB helper =================
-MONGO_URI = "URI HERE" #get trong secrets.toml
+MONGO_URI = "URI HERE" 
 
 @st.cache_resource
 def get_mongo_client():
@@ -1828,4 +1828,5 @@ with tab_advanced:
                                 width='stretch'
                             )
                             st.table(df_chart_inv[["Method", "Correct", "Total", "Accuracy"]])
+
 
