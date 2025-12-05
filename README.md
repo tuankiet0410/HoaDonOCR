@@ -14,7 +14,7 @@
     ```bash
     pip install -r requirements.txt
     ```
-
+3. Lấy API và URL key trong secrets
 ## Chạy ứng dụng
 
 Chạy lệnh sau trong terminal:
